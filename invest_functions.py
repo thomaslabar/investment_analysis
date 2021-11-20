@@ -1,6 +1,30 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""invest_functions.py: Contains functions for analyzing investment portfolios based on historical data"""
+
 import pandas as pd
 
 def historical_return(output_name, asset, initial_cash = None):
+    
+    """
+    This function calculates the historical return of an investment portfolio. Currently, it is restricted to buying one asset
+    and no additional cash inflows. Future additions will include owning multiple assets, implementation of trend-following
+    strategies, and the possibility of using leverage.
+    
+    Inputs:
+        output_name (string): Name for the two output csv files of this function. '_tranactions' and '_history' will be appended
+        asset (string): Name of the (one) asset for which the returns will be measured. The function looks for data csv's of the
+                        form: '${asset}.csv' and '${asset}_dividends.csv'
+        initial_cash (int or float; optional): The starting value of the portfolio in USD
+        
+    Outputs:
+       returns portfolio_history (Pandas DataFrame): A dataframe with two columns: the date the portfolio's value was calculated and the
+                                                     and the portfolio's value
+       saves '${output_name}_history.csv': A csv containg the portfolio history data
+       sages '${output_name}_transactions.csv': A csv containing a record of every transaction made during the portfolio simulation (right
+                                                now restricted to asset purchase). This is for sanity-checks of the simulation.
+    """
     
     #These two data frames will store data to be saved
     transactions = pd.DataFrame(columns = ["Date","Transaction","Asset","Price","Units","Value"])
@@ -51,7 +75,7 @@ def historical_return(output_name, asset, initial_cash = None):
         #If a dividend was paid in a given month, add it to cash value
         if pd.notna(focused_data["Dividends"][i]):
             
-            dividend = round(shares_vt * focused_data["Dividends"][i],2)
+            dividend = round(shares * focused_data["Dividends"][i],2)
             cash += dividend
 
             transactions.loc[len(transactions.index)] = [focused_data["Date"][i],"Dividend","Cash",dividend,
@@ -80,13 +104,13 @@ def historical_return(output_name, asset, initial_cash = None):
                                                          round(shares * focused_data["Close"][i],2)] 
         
         #Add final monthly value to historical dataframe
-        current_value = cash + round(shares_vt*focused_data.iloc[i]["Close"],2)
+        current_value = cash + round(shares*focused_data.iloc[i]["Close"],2)
         portfolio_history.loc[len(portfolio_history.index)] = [focused_data["Date"][i], current_value]
     
     #Save results to csv files
     transactions.to_csv(output_name+"_transactions.csv")
     portfolio_history.to_csv(output_name+"_history.csv")
-	
-	#Return portfolio's value history
-    print("Final assets: "+str(cash + round(shares_vt*focused_data.iloc[-1]["Close"],2)))
-	return portfolio_history
+    
+    #print("Final assets: "+str(cash + round(shares*focused_data.iloc[-1]["Close"],2)))
+    #Return portfolio's value history
+    return portfolio_history
