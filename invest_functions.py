@@ -4,6 +4,7 @@
 """invest_functions.py: Contains functions for analyzing investment portfolios based on historical data"""
 
 import pandas as pd
+import numpy as np
 
 def historical_return(output_name, asset, initial_cash = None):
     
@@ -114,3 +115,73 @@ def historical_return(output_name, asset, initial_cash = None):
     #print("Final assets: "+str(cash + round(shares*focused_data.iloc[-1]["Close"],2)))
     #Return portfolio's value history
     return portfolio_history
+
+def portfolio_statistics(historical_data, time_unit):
+    """
+    This function calculates the following statistics for a portfolio given its historical return data:
+        1) mean of annual returns
+        2) standard deviation of annual returns
+        3) max drawdown
+    
+    Inputs:
+        historical_data (string or Pandas dataframe): the historical returns of a portfolio calculated using
+                                                      the 'historical_return' function above. If a string is
+                                                      the input, load the saved csv into a Pandas Dataframe.
+                                                      If a dataframe is provided, load the output of the function
+                                                      directly. (NOTE: only works for string currently)
+        time_unit (string): What is the unit of time for each entry in the historical data provided (i.e., daily,
+                            monthly, or annual returns). For use in determining how to calculate annual returns
+    
+    Outputs:
+        statistics (dictionary): A dictionary containing all the calculated statistics with strings as keys (the name
+                                 of each statistic) and the values as the calculated stat.
+    """
+    
+    #Check inputs
+    assert type(historical_data) == str, "historical_data must be a string"
+    assert type(time_unit) == str, "time_unit must be a string"
+    assert time_unit in ["daily","monthly","annual"], "time_unit must be either 'daily', 'monthly', or 'annual'"
+    
+    try:
+        returns = pd.read_csv(historical_data)
+    except FileNotFoundError:
+        print("Historical return data not found")
+        
+    #Confirm that first two historical_data entries share a date (as designed)
+    assert returns.loc[0]["Date"] == returns.loc[1]["Date"], "Dates for first two entries not equal"
+    
+    #store all statistics in dictionary
+    statistics = {}
+    
+    #Calculate annual returns
+    annual_returns = []
+    
+    time_unit_dict = {"daily":365,"monthly":12,"annual":1}
+    
+    prev_value = returns.loc[0]["PortfolioValue"]
+    for i in range(time_unit_dict[time_unit],len(returns.index),time_unit_dict[time_unit]):
+        r = (returns.loc[i]["PortfolioValue"] - prev_value) / prev_value
+        annual_returns.append(r)
+        prev_value = returns.loc[i]["PortfolioValue"]
+
+    statistics["mean_annual_return"] = np.mean(annual_returns)
+    statistics["standard_deviation_annual_return"] = np.std(annual_returns)
+    
+    #Note: This is the sharpe ratio with the risk-free return set to 0
+    statistics["sharpe_ratio"] = np.mean(annual_returns) / np.std(annual_returns) 
+    
+    #Calculate max drawdown (i.e., lowest percentage decrease from an all-time high)
+    max_value = returns.loc[0]["PortfolioValue"]
+    max_drawdown = 0.0
+    
+    for i in range(1,len(returns.index),1):
+        current_value = returns.loc[i]["PortfolioValue"]
+        if current_value >= max_value:
+            max_value = current_value
+        else:
+            current_drawdown = (max_value - current_value) / max_value
+            max_drawdown = max(max_drawdown,current_drawdown)
+    
+    statistics["max_drawdown"] = max_drawdown
+        
+    return statistics
