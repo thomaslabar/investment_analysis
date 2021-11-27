@@ -6,6 +6,82 @@
 import pandas as pd
 import numpy as np
 
+def organize_data(assets, trend = None, trend_period = None):
+    """
+    This function takes a list of asset names, loads their price and dividend CSV's, and organizes them into a Pandas DataFrame.
+    This dataframe should then be used as an input for the function 'historical_return'. I used to do this step within that
+    function, but decided to make it its own function for both increased readability of my code and it allows me to use the
+    same dataframe for multiple 'historical_return' call. Among other benefits, this makes all these function calls run
+    with data that starts on the same date.
+    
+    Inputs:
+        assets (list of strings):  A list of the assets whose price and dividend data will be used to create the dataframe
+        trend (boolean): Will this data be used for a trend-following strategy (i.e., should a moving average be calculated)
+        trend_period (int): The number of data points to include for the trend's moving average
+    
+    Outputs:
+        all_data (Pandas DataFrame): The dataframe containing every assets' historical prices, dividend payments, and price
+        moving average (if specified)
+    """
+    
+    if trend == None:
+        trend = False
+    if trend_period == None:
+        trend_period = 0
+        
+    assert type(assets) == list, "assets must be a list of strings"
+    for i in assets:
+        assert type(i) == str, "assets must be a list of strings"
+    assert type (trend) == bool, "trend should be either 'True' or 'False'"
+    assert type(trend_period) == int and trend_period >= 0, "trend_period must be a nonnegative integer"
+    if trend == True:
+        assert trend_period != 0, "trend_period must be greater than 0 to calculate price trend"
+        
+    all_data = pd.DataFrame() #This dataframe will eventually contain all price, trend, and dividend data
+
+    for a in assets:
+        
+        #Load in price and dividend data. Will only include if both are present
+        try:
+            price_data = pd.read_csv(a+".csv")
+        except FileNotFoundError:
+            print(str(a)+" price data not found. Looking for file with name '"+str(a)+".csv'. Unable to include "+str(a))
+            continue
+        
+        try:
+            dividend_data = pd.read_csv(a+"_dividends.csv")
+        except FileNotFoundError:
+            print(str(a)+" dividend data not found. Looking for file with name '"+str(a)+"_dividends.csv'. Unable to include "+str(a))
+            continue
+        
+        #Rename dates in dataframes to Year-Month format to handle combining price and dividend data (as dividends
+        #have an exact date that may not match the given month date in the price data
+        price_data["Date"] = price_data["Date"].map(lambda i: i[:7])
+        dividend_data["Date"] = dividend_data["Date"].map(lambda i: i[:7])
+        
+        price_data.rename(columns = {"Close":"Close_"+str(a)}, inplace = True)
+        dividend_data.rename(columns = {"Dividends":"Dividends_"+str(a)}, inplace = True)
+        
+        #Add price, then moving average, then dividends to one asset dataframe. Use an outer merge to add dividends in order to keep
+        #every date in the price data (which by definition includes all the dividend data)
+        asset_data =price_data[["Date","Close_"+str(a)]].copy()
+        if trend:
+            asset_data["Close_"+str(a)+"_"+str(trend_period)+"-MA"] = asset_data.rolling(trend_period)["Close_"+str(a)].mean()
+        asset_data = asset_data.merge(dividend_data[["Date","Dividends_"+str(a)]].copy(),
+                                      how = "outer", on = ["Date"])
+
+        #If first asset, set all_data to asset_data
+        if all_data.empty:
+            all_data = asset_data.copy()
+        #Otherwise, use an inner join here to only keep dates which all assets have prices
+        else:
+            all_data = all_data.merge(asset_data.copy(), how = "inner", on = ["Date"])
+        print(all_data[max(trend_period-1,0):])
+    
+    #This returns the whole dataframe when trend_period = 0 (i.e., no trend following) or
+    #removes the first 'trend_period' data points to eliminate the initial 'NaNs' in the moving average 
+    return all_data[max(trend_period-1,0):]
+
 def historical_return(output_name, asset, riskless_asset = None, trend = None, initial_cash = None):
     
     """
