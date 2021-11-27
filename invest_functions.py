@@ -82,7 +82,7 @@ def organize_data(assets, trend = None, trend_period = None):
     #removes the first 'trend_period' data points to eliminate the initial 'NaNs' in the moving average 
     return all_data[max(trend_period-1,0):]
 
-def historical_return(output_name, asset, riskless_asset = None, trend = None, initial_cash = None):
+def historical_return(output_name, asset, riskless_asset = None, trend = None, trend_period = None, initial_cash = None):
     
     """
     This function calculates the historical return of an investment portfolio. Currently, it is restricted to buying one asset
@@ -96,8 +96,8 @@ def historical_return(output_name, asset, riskless_asset = None, trend = None, i
         riskless_asset (string): Name of the 'riskless' asset to trade into when usiing a trend-following strategy (usually short-term
                                  treasuries). The function looks for data csv's of the
                                  form: '${asset}.csv' and '${asset}_dividends.csv'
-        trend (int): The number of data points which will be used to calculate the trend (i.e., the moving average). This also serves as
-                     a boolean variable to detect if trend-following should be used (i.e., do trend-following if trend > 0). 
+        trend (boolean): Will this data be used for a trend-following strategy (i.e., should a moving average be calculated)
+        trend_period (int): The number of data points to include for the trend's moving average
         initial_cash (int or float; optional): The starting value of the portfolio in USD
         
     Outputs:
@@ -118,16 +118,20 @@ def historical_return(output_name, asset, riskless_asset = None, trend = None, i
     if riskless_asset == None:
         riskless_asset = ""
     if trend == None:
-        trend = 0
+        trend = False
+    if trend_period == None:
+        trend_period = 0
     
     #Make sure inputs are of the correct type
     assert type(output_name) == str, "output_name must be a string"
     assert type(asset) == str, "asset must be a string"
     assert type(riskless_asset) == str, "riskless_asset must be a string"
     assert type(initial_cash) == int or type(initial_cash) == float, "initial_cash must be an int for float"
-    assert type (trend) == int and trend >= 0, "trend must be an nonnegative integer"
-    if trend != 0:
-        assert riskless_asset != "", "Riskless asset must be specified if trend != 0"
+    assert type (trend) == bool, "trend should be either 'True' or 'False'"
+    assert type (trend_period) == int and trend_period >= 0, "trend must be an nonnegative integer"
+    if trend == True:
+        assert riskless_asset != "", "Riskless asset must be specified if trend is True"
+        assert trend_period > 0, "If trend = True, trend_period must be greater than 0"
     
     #Load asset prices/dividends from csv's into DataFrames
     try:
@@ -180,8 +184,8 @@ def historical_return(output_name, asset, riskless_asset = None, trend = None, i
                                           how = "inner", on = ["Date"])
     
     #If this is a trend-following strategy (such that trend > 0), calculate moving average
-    if trend != 0:
-        focused_data["Close_"+str(asset)+"_"+str(trend)+"_MA"] = focused_data.rolling(10)["Close_"+str(asset)].mean()    
+    if trend == True:
+        focused_data["Close_"+str(asset)+"_"+str(trend_period)+"_MA"] = focused_data.rolling(10)["Close_"+str(asset)].mean()    
         
     print(focused_data)
 
@@ -210,10 +214,10 @@ def historical_return(output_name, asset, riskless_asset = None, trend = None, i
                                                              1,dividend] 
                 
         #If tnred == 0 (denoting no trend-following strategy) or the current price is greater than the trend, move portfolio to risk asset
-        if trend == 0 or (trend !=0 and focused_data["Close_"+str(asset)][i] > focused_data["Close_"+str(asset)+"_"+str(trend)+"_MA"][i]):
+        if trend == False or (trend == True and focused_data["Close_"+str(asset)][i] > focused_data["Close_"+str(asset)+"_"+str(trend_period)+"_MA"][i]):
             
             #Sell riskless asset
-            if trend != 0:
+            if trend == True:
                 cash += round(shares[riskless_asset] * focused_data["Close_"+str(riskless_asset)][i],2)
                 shares[riskless_asset] = 0
                 
@@ -244,7 +248,7 @@ def historical_return(output_name, asset, riskless_asset = None, trend = None, i
 
             
             #Buy riskless asset
-            if trend != 0:
+            if trend == True:
                 shares_to_buy = cash//focused_data["Close_"+str(riskless_asset)][i]
                 cash -= round(shares_to_buy * focused_data["Close_"+str(riskless_asset)][i],2)
                 shares[riskless_asset] += int(shares_to_buy)
@@ -274,6 +278,8 @@ def portfolio_statistics(historical_data, time_unit):
         1) mean of annual returns
         2) standard deviation of annual returns
         3) max drawdown
+        4) sharpe ratio (assuming zero riskfree return)
+        5) approximate geometric return (estimated as mean - 0.5 * std.dev^2)
     
     Inputs:
         historical_data (string or Pandas dataframe): the historical returns of a portfolio calculated using
@@ -318,6 +324,7 @@ def portfolio_statistics(historical_data, time_unit):
 
     statistics["mean_annual_return"] = np.mean(annual_returns)
     statistics["standard_deviation_annual_return"] = np.std(annual_returns)
+    statistics["approx_geomtric_return"] = np.mean(annual_returns) - 0.5 * np.std(annual_returns) * np.std(annual_returns)
     
     #Note: This is the sharpe ratio with the risk-free return set to 0
     statistics["sharpe_ratio"] = np.mean(annual_returns) / np.std(annual_returns) 
