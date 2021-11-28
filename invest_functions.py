@@ -48,27 +48,31 @@ def organize_data(assets, trend = None, trend_period = None):
             print(str(a)+" price data not found. Looking for file with name '"+str(a)+".csv'. Unable to include "+str(a))
             continue
         
+        dividend_data_found = True
         try:
             dividend_data = pd.read_csv(a+"_dividends.csv")
         except FileNotFoundError:
-            print(str(a)+" dividend data not found. Looking for file with name '"+str(a)+"_dividends.csv'. Unable to include "+str(a))
-            continue
+            print(str(a)+" dividend data not found. Looking for file with name '"+str(a)+"_dividends.csv'. Can only use price data for "+str(a))
+            dividend_data_found = False
         
         #Rename dates in dataframes to Year-Month format to handle combining price and dividend data (as dividends
         #have an exact date that may not match the given month date in the price data
         price_data["Date"] = price_data["Date"].map(lambda i: i[:7])
-        dividend_data["Date"] = dividend_data["Date"].map(lambda i: i[:7])
+        if dividend_data_found:
+            dividend_data["Date"] = dividend_data["Date"].map(lambda i: i[:7])
         
         price_data.rename(columns = {"Close":"Close_"+str(a)}, inplace = True)
-        dividend_data.rename(columns = {"Dividends":"Dividends_"+str(a)}, inplace = True)
+        if dividend_data_found:
+            dividend_data.rename(columns = {"Dividends":"Dividends_"+str(a)}, inplace = True)
         
         #Add price, then moving average, then dividends to one asset dataframe. Use an outer merge to add dividends in order to keep
         #every date in the price data (which by definition includes all the dividend data)
         asset_data =price_data[["Date","Close_"+str(a)]].copy()
         if trend:
             asset_data["Close_"+str(a)+"_"+str(trend_period)+"-MA"] = asset_data.rolling(trend_period)["Close_"+str(a)].mean()
-        asset_data = asset_data.merge(dividend_data[["Date","Dividends_"+str(a)]].copy(),
-                                      how = "outer", on = ["Date"])
+        if dividend_data_found:
+            asset_data = asset_data.merge(dividend_data[["Date","Dividends_"+str(a)]].copy(),
+                                          how = "outer", on = ["Date"])
 
         #If first asset, set all_data to asset_data
         if all_data.empty:
@@ -127,7 +131,7 @@ def historical_return(data, output_name, asset, riskless_asset = None, trend = N
     if trend_period == None:
         trend_period = 0
     
-    #Make sure inputs are of the correct type
+    #Make sure inputs are valid
     assert type(data) == pd.DataFrame, "data must be a Pandas DataFrame"
     assert type(output_name) == str, "output_name must be a string"
     assert type(asset) == str, "asset must be a string"
@@ -138,6 +142,9 @@ def historical_return(data, output_name, asset, riskless_asset = None, trend = N
     if trend == True:
         assert riskless_asset != "", "Riskless asset must be specified if trend is True"
         assert trend_period > 0, "If trend = True, trend_period must be greater than 0"
+    assert "Close_"+str(asset) in data.columns, "Price data not available for asset "+str(asset)
+    if riskless_asset != "":
+        assert "Close_"+str(riskless_asset) in data.columns, "Price data not available for riskless_asset "+str(riskless_asset)
 
     cash = initial_cash
 
@@ -153,14 +160,14 @@ def historical_return(data, output_name, asset, riskless_asset = None, trend = N
         
         #If a dividend was paid in a given month, add it to cash value
         for a in shares.keys():
-            if pd.notna(data["Dividends_"+str(a)][i]):
+            if "Dividends_"+str(a) in data.columns and pd.notna(data["Dividends_"+str(a)][i]):
                 
                 dividend = round(shares[a] * data["Dividends_"+str(a)][i],2)
                 cash += dividend
                 
                 if dividend > 0:
-                    transactions.loc[len(transactions.index)] = [data["Date"][i],"Dividend",a,dividend,
-                                                                 1,dividend] 
+                    transactions.loc[len(transactions.index)] = [data["Date"][i],"Dividend",a,data["Dividends_"+str(a)][i],
+                                                                 shares[a],dividend] 
                 
         #If trend == False (denoting no trend-following strategy) or the current price is greater than the trend, move portfolio to risk asset
         if trend == False or (trend == True and data["Close_"+str(asset)][i] > data["Close_"+str(asset)+"_"+str(trend_period)+"-MA"][i]):
@@ -188,7 +195,7 @@ def historical_return(data, output_name, asset, riskless_asset = None, trend = N
         #Otherwise, sell all shares and move into riskless asset
         else:
             
-            
+            #Sell risk asset
             if trend == True and shares[asset] > 0:
                 #Sell risk asset
                 shares_to_sell = int(shares[asset])
@@ -200,15 +207,15 @@ def historical_return(data, output_name, asset, riskless_asset = None, trend = N
                                                              round(shares_to_sell * data["Close_"+str(asset)][i],2)]
 
             
-                #Buy riskless asset
-                shares_to_buy = cash//data["Close_"+str(riskless_asset)][i]
-                cash -= round(shares_to_buy * data["Close_"+str(riskless_asset)][i],2)
-                shares[riskless_asset] += int(shares_to_buy)
-                
-                if shares_to_buy > 0:
-                    transactions.loc[len(transactions.index)] = [data["Date"][i],"Buy",riskless_asset,
-                                                                 data["Close_"+str(riskless_asset)][i],int(shares_to_buy),
-                                                                 round(shares_to_buy * data["Close_"+str(riskless_asset)][i],2)]
+            #Buy riskless asset
+            shares_to_buy = cash//data["Close_"+str(riskless_asset)][i]
+            cash -= round(shares_to_buy * data["Close_"+str(riskless_asset)][i],2)
+            shares[riskless_asset] += int(shares_to_buy)
+            
+            if shares_to_buy > 0:
+                transactions.loc[len(transactions.index)] = [data["Date"][i],"Buy",riskless_asset,
+                                                             data["Close_"+str(riskless_asset)][i],int(shares_to_buy),
+                                                             round(shares_to_buy * data["Close_"+str(riskless_asset)][i],2)]
         
         #Add final monthly value to historical dataframe
         current_value = cash
