@@ -160,37 +160,37 @@ def historical_return(data, output_name, asset, riskless_asset = None, trend = N
         
         #If a dividend was paid in a given month, add it to cash value
         for a in shares.keys():
-            if "Dividends_"+str(a) in data.columns and pd.notna(data["Dividends_"+str(a)][i]):
+            if "Dividends_"+str(a) in data.columns and pd.notna(row["Dividends_"+str(a)]):
                 
-                dividend = round(shares[a] * data["Dividends_"+str(a)][i],2)
+                dividend = round(shares[a] * row["Dividends_"+str(a)],2)
                 cash += dividend
                 
                 if dividend > 0:
-                    transactions.loc[len(transactions.index)] = [data["Date"][i],"Dividend",a,data["Dividends_"+str(a)][i],
+                    transactions.loc[len(transactions.index)] = [row["Date"],"Dividend",a,row["Dividends_"+str(a)],
                                                                  shares[a],dividend] 
                 
         #If trend == False (denoting no trend-following strategy) or the current price is greater than the trend, move portfolio to risk asset
-        if trend == False or (trend == True and data["Close_"+str(asset)][i] > data["Close_"+str(asset)+"_"+str(trend_period)+"-MA"][i]):
-            
+        if trend == False or (trend == True and row["Close_"+str(asset)] > row["Close_"+str(asset)+"_"+str(trend_period)+"-MA"]):
+        #if trend == False or (trend == True and row["Close_"+str(asset)] > row["Close_"+str(asset)+"_"+str(trend_period)+"-MA"]):
             #Sell riskless asset
             if trend == True and shares[riskless_asset] > 0:
                 shares_to_sell = int(shares[riskless_asset])
-                cash += round(shares_to_sell * data["Close_"+str(riskless_asset)][i],2)
+                cash += round(shares_to_sell * row["Close_"+str(riskless_asset)],2)
                 shares[riskless_asset] = 0
                 
-                transactions.loc[len(transactions.index)] = [data["Date"][i],"Sell",riskless_asset,
-                                                             data["Close_"+str(riskless_asset)][i],shares_to_sell,
-                                                             round(shares_to_sell * data["Close_"+str(riskless_asset)][i],2)]
+                transactions.loc[len(transactions.index)] = [row["Date"],"Sell",riskless_asset,
+                                                             row["Close_"+str(riskless_asset)],shares_to_sell,
+                                                             round(shares_to_sell * row["Close_"+str(riskless_asset)],2)]
             
             #Buy risk asset
-            shares_to_buy = cash//data["Close_"+str(asset)][i]
-            cash -= round(shares_to_buy * data["Close_"+str(asset)][i],2)
+            shares_to_buy = cash//row["Close_"+str(asset)]
+            cash -= round(shares_to_buy * row["Close_"+str(asset)],2)
             shares[asset] += int(shares_to_buy)
             
             if shares_to_buy > 0:
-                transactions.loc[len(transactions.index)] = [data["Date"][i],"Buy",asset,
-                                                             data["Close_"+str(asset)][i],int(shares_to_buy),
-                                                             round(shares_to_buy * data["Close_"+str(asset)][i],2)]
+                transactions.loc[len(transactions.index)] = [row["Date"],"Buy",asset,
+                                                             row["Close_"+str(asset)],int(shares_to_buy),
+                                                             round(shares_to_buy * row["Close_"+str(asset)],2)]
                 
         #Otherwise, sell all shares and move into riskless asset
         else:
@@ -199,29 +199,29 @@ def historical_return(data, output_name, asset, riskless_asset = None, trend = N
             if trend == True and shares[asset] > 0:
                 #Sell risk asset
                 shares_to_sell = int(shares[asset])
-                cash += round(shares_to_sell * data["Close_"+str(asset)][i],2)
+                cash += round(shares_to_sell * row["Close_"+str(asset)],2)
                 shares[asset] = 0
                 
-                transactions.loc[len(transactions.index)] = [data["Date"][i],"Sell",asset,
-                                                             data["Close_"+str(asset)][i],shares_to_sell,
-                                                             round(shares_to_sell * data["Close_"+str(asset)][i],2)]
+                transactions.loc[len(transactions.index)] = [row["Date"],"Sell",asset,
+                                                             row["Close_"+str(asset)],shares_to_sell,
+                                                             round(shares_to_sell * row["Close_"+str(asset)],2)]
 
             
             #Buy riskless asset
-            shares_to_buy = cash//data["Close_"+str(riskless_asset)][i]
-            cash -= round(shares_to_buy * data["Close_"+str(riskless_asset)][i],2)
+            shares_to_buy = cash//row["Close_"+str(riskless_asset)]
+            cash -= round(shares_to_buy * row["Close_"+str(riskless_asset)],2)
             shares[riskless_asset] += int(shares_to_buy)
             
             if shares_to_buy > 0:
-                transactions.loc[len(transactions.index)] = [data["Date"][i],"Buy",riskless_asset,
-                                                             data["Close_"+str(riskless_asset)][i],int(shares_to_buy),
-                                                             round(shares_to_buy * data["Close_"+str(riskless_asset)][i],2)]
+                transactions.loc[len(transactions.index)] = [row["Date"],"Buy",riskless_asset,
+                                                             row["Close_"+str(riskless_asset)],int(shares_to_buy),
+                                                             round(shares_to_buy * row["Close_"+str(riskless_asset)],2)]
         
         #Add final monthly value to historical dataframe
         current_value = cash
         for a in shares.keys():
-            current_value += round(shares[a] * data.iloc[i]["Close_"+str(a)],2)
-        portfolio_history.loc[len(portfolio_history.index)] = [data["Date"][i], current_value]
+            current_value += round(shares[a] * row["Close_"+str(a)],2)
+        portfolio_history.loc[len(portfolio_history.index)] = [row["Date"], current_value]
     
     #Save results to csv files
     transactions.to_csv(output_name+"_transactions.csv")
